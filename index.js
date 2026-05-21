@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
@@ -53,10 +54,70 @@ const bookingSchema = new mongoose.Schema({
 
 const Booking = mongoose.model('Booking', bookingSchema);
 
-// Basic Tutor Routes
-app.post('/api/tutors', async (req, res) => {
+// JWT Middleware
+const verifyJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const tokenFromCookie = req.cookies?.token;
+  let token = tokenFromCookie;
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  }
+  
+  if (!token) {
+    return res.status(401).send({ message: 'Unauthorized access: Token missing' });
+  }
+  
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: 'Forbidden access: Invalid token' });
+    }
+    req.user = decoded;
+    next();
+  });
+};
+
+// Auth API Endpoints
+app.post('/api/jwt', async (req, res) => {
   try {
-    const newTutor = new Tutor(req.body);
+    const user = req.body;
+    if (!user || !user.email) {
+      return res.status(400).send({ message: 'Email is required' });
+    }
+    const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '7d' });
+    
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    }).send({ success: true, token });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+app.post('/api/logout', async (req, res) => {
+  try {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 0
+    }).send({ success: true });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// Basic Tutor Routes
+app.post('/api/tutors', verifyJWT, async (req, res) => {
+  try {
+    const newTutorData = req.body;
+    if (newTutorData.createdBy !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: Email mismatch' });
+    }
+    const newTutor = new Tutor(newTutorData);
     const savedTutor = await newTutor.save();
     res.status(201).send(savedTutor);
   } catch (error) {
@@ -68,6 +129,19 @@ app.get('/api/tutors', async (req, res) => {
   try {
     const tutors = await Tutor.find().sort({ createdAt: -1 });
     res.send(tutors);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+app.get('/api/my-tutors', verifyJWT, async (req, res) => {
+  try {
+    const email = req.query.email;
+    if (email !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: Email mismatch' });
+    }
+    const myTutors = await Tutor.find({ createdBy: email }).sort({ createdAt: -1 });
+    res.send(myTutors);
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
@@ -85,10 +159,14 @@ app.get('/api/tutors/:id', async (req, res) => {
   }
 });
 
-// Basic Booking Routes
-app.post('/api/bookings', async (req, res) => {
+// Booking Routes
+app.post('/api/bookings', verifyJWT, async (req, res) => {
   try {
-    const newBooking = new Booking(req.body);
+    const bookingData = req.body;
+    if (bookingData.studentEmail !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: Email mismatch' });
+    }
+    const newBooking = new Booking(bookingData);
     const savedBooking = await newBooking.save();
     res.status(201).send(savedBooking);
   } catch (error) {
@@ -96,9 +174,13 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-app.get('/api/my-bookings', async (req, res) => {
+app.get('/api/my-bookings', verifyJWT, async (req, res) => {
   try {
-    const bookings = await Booking.find({ studentEmail: req.query.email }).sort({ createdAt: -1 });
+    const email = req.query.email;
+    if (email !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: Email mismatch' });
+    }
+    const bookings = await Booking.find({ studentEmail: email }).sort({ createdAt: -1 });
     res.send(bookings);
   } catch (error) {
     res.status(500).send({ message: error.message });
