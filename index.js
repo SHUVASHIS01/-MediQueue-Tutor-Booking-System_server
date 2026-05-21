@@ -227,18 +227,67 @@ app.delete('/api/tutors/:id', verifyJWT, async (req, res) => {
   }
 });
 
-// Booking Routes
+// Booking with slot and date checks (Atomic decrease)
 app.post('/api/bookings', verifyJWT, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const bookingData = req.body;
+    
     if (bookingData.studentEmail !== req.user.email) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(403).send({ message: 'Forbidden access: Email mismatch' });
     }
-    const newBooking = new Booking(bookingData);
-    const savedBooking = await newBooking.save();
-    res.status(201).send(savedBooking);
+    
+    const tutor = await Tutor.findById(bookingData.tutorId).session(session);
+    if (!tutor) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).send({ message: 'Tutor not found' });
+    }
+    
+    if (tutor.totalSlots <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).send({ message: 'No available slots left.' });
+    }
+    
+    const currentDate = new Date();
+    const sessionDate = new Date(tutor.sessionStartDate);
+    if (currentDate < sessionDate) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).send({ message: 'Booking is not available yet for this tutor' });
+    }
+    
+    tutor.totalSlots = tutor.totalSlots - 1;
+    await tutor.save({ session });
+    
+    const newBooking = new Booking({
+      tutorId: bookingData.tutorId,
+      tutorName: bookingData.tutorName,
+      studentName: bookingData.studentName,
+      studentEmail: bookingData.studentEmail,
+      studentPhone: bookingData.studentPhone,
+      hourlyFee: tutor.hourlyFee,
+      status: 'booked'
+    });
+    
+    const savedBooking = await newBooking.save({ session });
+    
+    await session.commitTransaction();
+    session.endSession();
+    
+    res.status(201).send({
+      message: 'Booking successful!',
+      booking: savedBooking,
+      remainingSlots: tutor.totalSlots
+    });
   } catch (error) {
-    res.status(400).send({ message: error.message });
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).send({ message: error.message });
   }
 });
 
