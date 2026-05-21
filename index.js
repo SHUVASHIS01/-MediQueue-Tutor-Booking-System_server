@@ -10,7 +10,12 @@ const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://mediqueue-tutor-booking.web.app',
+    'https://mediqueue-tutor-booking.firebaseapp.com'
+  ],
   credentials: true
 }));
 app.use(express.json());
@@ -110,7 +115,7 @@ app.post('/api/logout', async (req, res) => {
   }
 });
 
-// Tutor Routes
+// Tutor Routes (with search and date-range filter)
 app.post('/api/tutors', verifyJWT, async (req, res) => {
   try {
     const newTutorData = req.body;
@@ -299,6 +304,32 @@ app.get('/api/my-bookings', verifyJWT, async (req, res) => {
     }
     const bookings = await Booking.find({ studentEmail: email }).sort({ createdAt: -1 });
     res.send(bookings);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// Cancel Booking
+app.patch('/api/bookings/:id/cancel', verifyJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    
+    if (!booking) {
+      return res.status(404).send({ message: 'Booking not found' });
+    }
+    
+    if (booking.studentEmail !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: You can only cancel your own bookings' });
+    }
+    
+    booking.status = 'cancelled';
+    const updatedBooking = await booking.save();
+    
+    // Auto increment available slots back
+    await Tutor.findByIdAndUpdate(booking.tutorId, { $inc: { totalSlots: 1 } });
+    
+    res.send(updatedBooking);
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
