@@ -14,7 +14,8 @@ app.use(cors({
     'http://localhost:5173',
     'http://localhost:5174',
     'https://mediqueue-tutor-booking.web.app',
-    'https://mediqueue-tutor-booking.firebaseapp.com'
+    'https://mediqueue-tutor-booking.firebaseapp.com',
+    'https://medi-queue-tutor-booking-system-cli.vercel.app'
   ],
   credentials: true
 }));
