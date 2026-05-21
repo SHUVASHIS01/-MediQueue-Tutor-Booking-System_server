@@ -40,6 +40,19 @@ const tutorSchema = new mongoose.Schema({
 
 const Tutor = mongoose.model('Tutor', tutorSchema);
 
+// Booking Schema & Model
+const bookingSchema = new mongoose.Schema({
+  tutorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tutor', required: true },
+  tutorName: { type: String, required: true },
+  studentName: { type: String, required: true },
+  studentEmail: { type: String, required: true },
+  studentPhone: { type: String, required: true },
+  hourlyFee: { type: Number },
+  status: { type: String, enum: ['booked', 'cancelled'], default: 'booked' }
+}, { timestamps: true });
+
+const Booking = mongoose.model('Booking', bookingSchema);
+
 // Basic Tutor Routes
 app.post('/api/tutors', async (req, res) => {
   try {
@@ -67,6 +80,26 @@ app.get('/api/tutors/:id', async (req, res) => {
       return res.status(404).send({ message: 'Tutor not found' });
     }
     res.send(tutor);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// Basic Booking Routes
+app.post('/api/bookings', async (req, res) => {
+  try {
+    const newBooking = new Booking(req.body);
+    const savedBooking = await newBooking.save();
+    res.status(201).send(savedBooking);
+  } catch (error) {
+    res.status(400).send({ message: error.message });
+  }
+});
+
+app.get('/api/my-bookings', async (req, res) => {
+  try {
+    const bookings = await Booking.find({ studentEmail: req.query.email }).sort({ createdAt: -1 });
+    res.send(bookings);
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
