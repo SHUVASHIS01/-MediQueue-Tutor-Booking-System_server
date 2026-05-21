@@ -110,7 +110,7 @@ app.post('/api/logout', async (req, res) => {
   }
 });
 
-// Basic Tutor Routes
+// Tutor Routes (with search and date-range filter)
 app.post('/api/tutors', verifyJWT, async (req, res) => {
   try {
     const newTutorData = req.body;
@@ -127,7 +127,36 @@ app.post('/api/tutors', verifyJWT, async (req, res) => {
 
 app.get('/api/tutors', async (req, res) => {
   try {
-    const tutors = await Tutor.find().sort({ createdAt: -1 });
+    const { search, startDate, endDate } = req.query;
+    let query = {};
+    
+    // Search by name (case-insensitive) using $regex
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+    
+    // Filter by sessionStartDate using $gte and $lte
+    if (startDate || endDate) {
+      query.sessionStartDate = {};
+      if (startDate) {
+        query.sessionStartDate.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.sessionStartDate.$lte = new Date(endDate);
+      }
+    }
+    
+    const tutors = await Tutor.find(query).sort({ createdAt: -1 });
+    res.send(tutors);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// Get 6 featured tutors using $limit
+app.get('/api/tutors/featured', async (req, res) => {
+  try {
+    const tutors = await Tutor.find().limit(6).sort({ createdAt: -1 });
     res.send(tutors);
   } catch (error) {
     res.status(500).send({ message: error.message });
