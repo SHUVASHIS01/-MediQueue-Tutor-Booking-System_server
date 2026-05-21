@@ -110,7 +110,7 @@ app.post('/api/logout', async (req, res) => {
   }
 });
 
-// Tutor Routes (with search and date-range filter)
+// Tutor Routes
 app.post('/api/tutors', verifyJWT, async (req, res) => {
   try {
     const newTutorData = req.body;
@@ -130,12 +130,10 @@ app.get('/api/tutors', async (req, res) => {
     const { search, startDate, endDate } = req.query;
     let query = {};
     
-    // Search by name (case-insensitive) using $regex
     if (search) {
       query.name = { $regex: search, $options: 'i' };
     }
     
-    // Filter by sessionStartDate using $gte and $lte
     if (startDate || endDate) {
       query.sessionStartDate = {};
       if (startDate) {
@@ -153,7 +151,6 @@ app.get('/api/tutors', async (req, res) => {
   }
 });
 
-// Get 6 featured tutors using $limit
 app.get('/api/tutors/featured', async (req, res) => {
   try {
     const tutors = await Tutor.find().limit(6).sort({ createdAt: -1 });
@@ -183,6 +180,48 @@ app.get('/api/tutors/:id', async (req, res) => {
       return res.status(404).send({ message: 'Tutor not found' });
     }
     res.send(tutor);
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// Update Tutor
+app.put('/api/tutors/:id', verifyJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tutor = await Tutor.findById(id);
+    
+    if (!tutor) {
+      return res.status(404).send({ message: 'Tutor not found' });
+    }
+    
+    if (tutor.createdBy !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: You can only edit your own tutors' });
+    }
+    
+    const updatedTutor = await Tutor.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
+    res.send(updatedTutor);
+  } catch (error) {
+    res.status(400).send({ message: error.message });
+  }
+});
+
+// Delete Tutor
+app.delete('/api/tutors/:id', verifyJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tutor = await Tutor.findById(id);
+    
+    if (!tutor) {
+      return res.status(404).send({ message: 'Tutor not found' });
+    }
+    
+    if (tutor.createdBy !== req.user.email) {
+      return res.status(403).send({ message: 'Forbidden access: You can only delete your own tutors' });
+    }
+    
+    await Tutor.findByIdAndDelete(id);
+    res.send({ message: 'Tutor deleted successfully', id });
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
